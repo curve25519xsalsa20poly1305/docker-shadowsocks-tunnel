@@ -1,0 +1,93 @@
+diff --git a/src/common.h b/src/common.h
+index 696248f..d1892ce 100644
+--- a/src/common.h
++++ b/src/common.h
+@@ -69,6 +69,7 @@ enum {
+     GETOPT_VAL_PLUGIN_OPTS,
+     GETOPT_VAL_PASSWORD,
+     GETOPT_VAL_KEY,
++    GETOPT_VAL_UP,
+     GETOPT_VAL_MANAGER_ADDRESS,
+     GETOPT_VAL_EXECUTABLE,
+     GETOPT_VAL_WORKDIR,
+diff --git a/src/redir.c b/src/redir.c
+index 42dafb4..6fc476c 100644
+--- a/src/redir.c
++++ b/src/redir.c
+@@ -42,6 +42,7 @@
+ #include <linux/netfilter_ipv6/ip6_tables.h>
+ 
+ #include <libcork/core.h>
++#include <libcork/os.h>
+ 
+ #ifdef HAVE_CONFIG_H
+ #include "config.h"
+@@ -809,11 +810,7 @@ signal_cb(EV_P_ ev_signal *w, int revents)
+     if (revents & EV_SIGNAL) {
+         switch (w->signum) {
+         case SIGCHLD:
+-            if (!is_plugin_running()) {
+-                LOGE("plugin service exit unexpectedly");
+-                ret_val = -1;
+-            } else
+-                return;
++            return;
+         case SIGINT:
+         case SIGTERM:
+             ev_signal_stop(EV_DEFAULT, &sigint_watcher);
+@@ -825,6 +822,16 @@ signal_cb(EV_P_ ev_signal *w, int revents)
+     }
+ }
+ 
++void
++exec_up_script(const char *up)
++{
++    struct cork_exec *exec = NULL;
++    struct cork_subprocess *sub = NULL;
++    exec = cork_exec_new(up);
++    sub = cork_subprocess_new_exec(exec, NULL, NULL, NULL);
++    cork_subprocess_start(sub);
++}
++
+ int
+ main(int argc, char **argv)
+ {
+@@ -834,6 +841,7 @@ main(int argc, char **argv)
+     int pid_flags    = 0;
+     int mptcp        = 0;
+     int mtu          = 0;
++    char *up         = NULL;
+     char *user       = NULL;
+     char *local_port = NULL;
+     char *local_addr = NULL;
+@@ -869,6 +877,7 @@ main(int argc, char **argv)
+         { "no-delay",    no_argument,       NULL, GETOPT_VAL_NODELAY     },
+         { "password",    required_argument, NULL, GETOPT_VAL_PASSWORD    },
+         { "key",         required_argument, NULL, GETOPT_VAL_KEY         },
++        { "up",          required_argument, NULL, GETOPT_VAL_UP          },
+         { "help",        no_argument,       NULL, GETOPT_VAL_HELP        },
+         { NULL,          0,                 NULL, 0                      }
+     };
+@@ -904,6 +913,10 @@ main(int argc, char **argv)
+         case GETOPT_VAL_KEY:
+             key = optarg;
+             break;
++        case GETOPT_VAL_UP:
++            up = optarg;
++            LOGI("set up script %s", up);
++            break;
+         case GETOPT_VAL_REUSE_PORT:
+             reuse_port = 1;
+             break;
+@@ -1250,6 +1263,11 @@ main(int argc, char **argv)
+         LOGI("running from root user");
+     }
+ 
++    // Call up script
++    if (up != NULL) {
++        exec_up_script(up);
++    }
++
+     ev_run(loop, 0);
+ 
+     if (plugin != NULL) {
